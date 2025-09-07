@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>✨ Put Your Object ✨</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+  <style>
+    body {
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background: linear-gradient(135deg, #141E30, #243B55);
+      font-family: Arial, sans-serif;
+      color: white;
+      text-align: center;
+      overflow: hidden;
+    }
+
+    /* Animated gradient text with shimmer */
+    .title {
+      font-size: 36px;
+      font-weight: bold;
+      margin-bottom: 20px;
+      background: linear-gradient(270deg, #ff6ec4, #7873f5, #4ade80, #facc15);
+      background-size: 800% 800%;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: gradientShimmer 5s ease infinite, glow 1.5s ease-in-out infinite alternate;
+      text-shadow: 0 0 10px rgba(255,255,255,0.3);
+    }
+
+    @keyframes gradientShimmer {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    @keyframes glow {
+      0% { text-shadow: 0 0 8px rgba(255,255,255,0.3), 0 0 12px rgba(255,255,255,0.2); }
+      50% { text-shadow: 0 0 16px rgba(255,255,255,0.6), 0 0 24px rgba(255,255,255,0.4); }
+      100% { text-shadow: 0 0 8px rgba(255,255,255,0.3), 0 0 12px rgba(255,255,255,0.2); }
+    }
+
+    .container {
+      position: relative;
+      width: 360px;
+      height: 270px;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 6px 30px rgba(0,0,0,0.7);
+      display: none;
+    }
+
+    video, canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    video { display: none; }
+
+    #loading {
+      font-size: 20px;
+      margin-top: 20px;
+      animation: blink 1s infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Animated title -->
+  <h1 class="title">✨ Put Your Object ✨</h1>
+
+  <!-- Loading screen -->
+  <div id="loading">⏳ Loading model, please wait...</div>
+
+  <!-- Detection container -->
+  <div class="container" id="detector">
+    <video id="video" autoplay muted playsinline></video>
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <script>
+    async function main() {
+      // Load lightweight COCO-SSD model
+      const model = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
+      document.getElementById("loading").innerText = "✅ Model loaded, starting camera...";
+
+      // Setup video
+      const video = document.getElementById("video");
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 224, height: 224 } // mobile friendly
+      });
+      video.srcObject = stream;
+
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+      let lastPredictions = [];
+
+      // Wait until video metadata is loaded
+      video.addEventListener("loadedmetadata", () => {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        document.getElementById("loading").style.display = "none";
+        document.getElementById("detector").style.display = "block";
+
+        detectFrame(video, model, ctx, canvas, lastPredictions, 0);
+      });
+    }
+
+    async function detectFrame(video, model, ctx, canvas, lastPredictions, frameCount) {
+      // Draw mirrored video
+      ctx.save();
+      ctx.scale(-1, 1);
+      ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
+      ctx.restore();
+
+      // Draw object boxes
+      lastPredictions.forEach(pred => {
+        const [x, y, width, height] = pred.bbox;
+        const mirroredX = canvas.width - x - width;
+
+        ctx.strokeStyle = "#00FF88";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(mirroredX, y, width, height);
+
+        ctx.fillStyle = "rgba(0,255,136,0.7)";
+        ctx.font = "12px Arial";
+        ctx.fillText(
+          `${pred.class} ${(pred.score*100).toFixed(0)}%`,
+          mirroredX + 4,
+          y > 10 ? y - 4 : 12
+        );
+      });
+
+      // Detect every 5th frame for speed
+      if (frameCount % 5 === 0) {
+        model.detect(video).then(predictions => {
+          lastPredictions.length = 0;
+          lastPredictions.push(...predictions);
+        });
+      }
+
+      requestAnimationFrame(() =>
+        detectFrame(video, model, ctx, canvas, lastPredictions, frameCount+1)
+      );
+    }
+
+    main();
+  </script>
+</body>
+</html>
